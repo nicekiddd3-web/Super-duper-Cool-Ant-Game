@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Ecosystem: Puddles & Gardens</title>
+    <title>Ant Colony vs Worms</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -28,9 +28,10 @@
             padding: 10px 20px;
             border-radius: 10px;
             display: flex;
-            gap: 15px;
+            gap: 12px;
             align-items: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            flex-wrap: wrap;
+            justify-content: center;
         }
         button {
             padding: 10px 18px;
@@ -48,6 +49,7 @@
         .btn-plant { background-color: #66bb6a; }
         .btn-water { background-color: #4fc3f7; }
         .btn-ant { background-color: #ffa726; }
+        .btn-worm { background-color: #e91e63; color: white; border: 2px solid #880e4f; }
         
         .active { 
             border: 2px solid white; 
@@ -56,22 +58,24 @@
         
         .stats { font-size: 14px; color: #ccc; font-family: monospace; border-right: 1px solid #555; padding-right: 15px;}
         .highlight { color: #ffa726; font-weight: bold; }
+        .danger { color: #e91e63; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>🐜 Advanced Ant Ecosystem</h2>
+    <h2>🐜 Colony vs Predators</h2>
     
     <canvas id="gameCanvas" width="800" height="500"></canvas>
     
     <div class="ui-panel">
         <div class="stats">
             Ants: <span id="s-ants" class="highlight">0</span><br>
-            Colony Food: <span id="s-stock" class="highlight">0</span>
+            Worms: <span id="s-worms" class="danger">0</span>
         </div>
         <button id="btn-plant" class="btn-plant" onclick="setTool('plant')">Plant Garden</button>
-        <button id="btn-water" class="btn-water" onclick="setTool('water')">Place Puddle (10 Sips)</button>
+        <button id="btn-water" class="btn-water" onclick="setTool('water')">Water Puddle</button>
         <button id="btn-ant" class="btn-ant" onclick="setTool('ant')">Spawn Ant</button>
+        <button id="btn-worm" class="btn-worm" onclick="setTool('worm')">Spawn Worm 🐍</button>
     </div>
 
 <script>
@@ -85,10 +89,11 @@
 
     // --- GAME STATE ---
     let ants = [];
-    let foods = []; // Little crumbs
-    let puddles = []; // Water sources
-    let plants = []; // Food spawners
-    let pheromones = []; // Highways
+    let worms = [];
+    let foods = [];
+    let puddles = [];
+    let plants = [];
+    let pheromones = [];
     let colonyFood = 0;
     
     let selectedTool = 'plant';
@@ -104,10 +109,7 @@
 
     class Pheromone {
         constructor(x, y, vx, vy) {
-            this.x = x;
-            this.y = y;
-            this.vx = vx;
-            this.vy = vy;
+            this.x = x; this.y = y; this.vx = vx; this.vy = vy;
             this.life = 1.0; 
         }
         update() { this.life -= 0.003; }
@@ -119,17 +121,121 @@
         }
     }
 
-    class Plant {
+    class Worm {
         constructor(x, y) {
             this.x = x;
             this.y = y;
-            this.timer = 0;
-            this.spawnRate = 200;
+            this.vx = (Math.random() - 0.5);
+            this.vy = (Math.random() - 0.5);
+            this.size = 6;
+            this.speed = 0.85; // Slower than ants
+            
+            // For the trail effect (Body segments)
+            this.history = []; 
+            this.historyMax = 12; // Length of worm
+        }
+
+        update() {
+            let target = null;
+            
+            // 1. HUNT: Look for nearest ant within range
+            let prey = this.findNearestAnt(120);
+            
+            if (prey) {
+                // Chase Prey
+                let dx = prey.x - this.x;
+                let dy = prey.y - this.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                
+                // Eat if touching
+                if (dist < this.size + 2) {
+                    ants.splice(ants.indexOf(prey), 1); // Kill ant
+                } else {
+                    // Move towards prey
+                    this.vx = (dx / dist) * this.speed;
+                    this.vy = (dy / dist) * this.speed;
+                }
+            } else {
+                // Wander Randomly
+                if (Math.random() < 0.05) {
+                    this.vx += (Math.random() - 0.5) * 0.5;
+                    this.vy += (Math.random() - 0.5) * 0.5;
+                }
+                // Normalize wandering speed
+                let currentSpeed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                if (currentSpeed > this.speed) {
+                    this.vx = (this.vx / currentSpeed) * this.speed;
+                    this.vy = (this.vy / currentSpeed) * this.speed;
+                }
+            }
+
+            // Update Position
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // Bounce off walls
+            if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+            if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            this.x = Math.max(0, Math.min(canvas.width, this.x));
+            this.y = Math.max(0, Math.min(canvas.height, this.y));
+
+            // Record History for Body Segments
+            this.history.push({x: this.x, y: this.y});
+            if (this.history.length > this.historyMax) {
+                this.history.shift(); // Remove oldest segment
+            }
+        }
+
+        draw() {
+            // Draw Body (History)
+            ctx.fillStyle = '#c2185b'; // Dark Pink
+            for (let i = 0; i < this.history.length; i++) {
+                let pos = this.history[i];
+                // Segments get smaller towards the tail
+                let size = this.size * (i / this.history.length);
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, size, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // Draw Head
+            ctx.fillStyle = '#e91e63'; // Bright Pink
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Eyes
+            ctx.fillStyle = 'white';
+            ctx.beginPath(); ctx.arc(this.x - 2, this.y - 2, 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(this.x + 2, this.y - 2, 2, 0, Math.PI*2); ctx.fill();
+            
+            // Pupils (Look in velocity direction slightly)
+            ctx.fillStyle = 'black';
+            ctx.beginPath(); ctx.arc(this.x - 2 + this.vx, this.y - 2 + this.vy, 1, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(this.x + 2 + this.vx, this.y - 2 + this.vy, 1, 0, Math.PI*2); ctx.fill();
+        }
+
+        findNearestAnt(range) {
+            let close = null;
+            let minDist = range;
+            for(let ant of ants) {
+                let d = Math.sqrt((this.x - ant.x)**2 + (this.y - ant.y)**2);
+                if (d < minDist) {
+                    minDist = d;
+                    close = ant;
+                }
+            }
+            return close;
+        }
+    }
+
+    class Plant {
+        constructor(x, y) {
+            this.x = x; this.y = y; this.timer = 0; this.spawnRate = 200;
         }
         update() {
             this.timer++;
             if (this.timer > this.spawnRate) {
-                // Spawn food in a small radius
                 let angle = Math.random() * Math.PI * 2;
                 let dist = 15 + Math.random() * 15;
                 foods.push(new Item(this.x + Math.cos(angle)*dist, this.y + Math.sin(angle)*dist));
@@ -137,203 +243,121 @@
             }
         }
         draw() {
-            // Pulse animation
             let pulse = Math.sin(Date.now() / 300) * 1.5;
             ctx.fillStyle = '#2e7d32'; 
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, 8 + pulse, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(this.x, this.y, 8 + pulse, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#a5d6a7'; 
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill();
         }
     }
 
     class WaterPuddle {
         constructor(x, y) {
-            this.x = x;
-            this.y = y;
-            this.capacity = 10; // Can be drunk 10 times
-            this.maxCapacity = 10;
+            this.x = x; this.y = y; this.capacity = 10; this.maxCapacity = 10;
         }
         draw() {
-            // Radius depends on how much water is left
             let radius = 5 + (this.capacity / this.maxCapacity) * 15; 
-            
-            ctx.fillStyle = 'rgba(41, 182, 246, 0.6)'; // Translucent Blue
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Rim
+            ctx.fillStyle = 'rgba(41, 182, 246, 0.6)';
+            ctx.beginPath(); ctx.arc(this.x, this.y, radius, 0, Math.PI * 2); ctx.fill();
             ctx.strokeStyle = 'rgba(41, 182, 246, 0.9)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
+            ctx.lineWidth = 1; ctx.stroke();
         }
     }
 
     class Item {
-        constructor(x, y) {
-            this.x = x;
-            this.y = y;
-        }
+        constructor(x, y) { this.x = x; this.y = y; }
         draw() {
-            ctx.fillStyle = '#76ff03'; // Bright Green Crumb
-            ctx.fillRect(this.x - 2, this.y - 2, 4, 4);
+            ctx.fillStyle = '#76ff03'; ctx.fillRect(this.x - 2, this.y - 2, 4, 4);
         }
     }
 
     class Ant {
         constructor(x, y) {
-            this.x = x;
-            this.y = y;
-            this.vx = (Math.random() - 0.5);
-            this.vy = (Math.random() - 0.5);
+            this.x = x; this.y = y;
+            this.vx = (Math.random() - 0.5); this.vy = (Math.random() - 0.5);
             this.hasFood = false;
             this.scentTimer = 0;
-            
             this.hunger = 80 + Math.random() * 20;
             this.thirst = 80 + Math.random() * 20;
-            this.angleNoise = Math.random() * 100;
         }
-
         update() {
-            this.hunger -= 0.05;
-            this.thirst -= 0.08; // Gets thirsty faster than hungry
-            this.angleNoise += 0.1;
-
+            this.hunger -= 0.05; this.thirst -= 0.08;
             let target = null;
             let speed = 1.2;
 
-            // --- BEHAVIOR TREE ---
-
-            // 1. CARRYING FOOD -> GO HOME
             if (this.hasFood) {
-                let dx = NEST_X - this.x;
-                let dy = NEST_Y - this.y;
+                let dx = NEST_X - this.x; let dy = NEST_Y - this.y;
                 let dist = Math.sqrt(dx*dx + dy*dy);
-                this.vx = (dx / dist) * speed;
-                this.vy = (dy / dist) * speed;
-
+                this.vx = (dx / dist) * speed; this.vy = (dy / dist) * speed;
                 if (dist < NEST_SIZE) {
-                    this.hasFood = false;
-                    colonyFood++;
-                    this.hunger += 30; // Eat a bit at home
-                    this.vx *= -1; this.vy *= -1; // Turn around
+                    this.hasFood = false; colonyFood++; this.hunger += 30;
+                    this.vx *= -1; this.vy *= -1;
                 }
-                
-                // Drop Highways
                 this.scentTimer++;
                 if (this.scentTimer > 10) { 
                     pheromones.push(new Pheromone(this.x, this.y, this.vx, this.vy));
                     this.scentTimer = 0;
                 }
-            }
-            // 2. THIRSTY -> FIND PUDDLE
-            else if (this.thirst < 50 && puddles.length > 0) {
-                target = this.findNearest(puddles, 1000); // Infinite range for water
-                
+            } else if (this.thirst < 50 && puddles.length > 0) {
+                target = this.findNearest(puddles, 1000);
                 if (target) {
-                    let dx = target.x - this.x;
-                    let dy = target.y - this.y;
+                    let dx = target.x - this.x; let dy = target.y - this.y;
                     let dist = Math.sqrt(dx*dx + dy*dy);
                     let puddleRadius = 5 + (target.capacity/10)*15;
-
-                    // Reached Puddle edge?
                     if (dist < puddleRadius + 5) {
-                        this.thirst = 100; // Refill
-                        target.capacity -= 1; // Drain puddle
-                        this.vx *= -1; this.vy *= -1; // Back away
+                        this.thirst = 100; target.capacity -= 1;
+                        this.vx *= -1; this.vy *= -1;
                     } else {
-                        this.vx = (dx/dist) * speed;
-                        this.vy = (dy/dist) * speed;
+                        this.vx = (dx/dist) * speed; this.vy = (dy/dist) * speed;
                     }
                 }
-            }
-            // 3. HUNGRY -> FIND FOOD OR TRAILS
-            else {
+            } else {
                 let visibleFood = this.findNearest(foods, 60);
                 if (visibleFood) {
                     target = visibleFood;
-                    // Move to Food
-                    let dx = target.x - this.x;
-                    let dy = target.y - this.y;
+                    let dx = target.x - this.x; let dy = target.y - this.y;
                     let dist = Math.sqrt(dx*dx + dy*dy);
-                    
                     if (dist < 4) {
-                        this.hasFood = true;
-                        foods.splice(foods.indexOf(target), 1);
-                        this.hunger = 100;
-                        this.vx *= -1; this.vy *= -1;
+                        this.hasFood = true; foods.splice(foods.indexOf(target), 1);
+                        this.hunger = 100; this.vx *= -1; this.vy *= -1;
                     } else {
-                        this.vx = (dx/dist) * speed;
-                        this.vy = (dy/dist) * speed;
+                        this.vx = (dx/dist) * speed; this.vy = (dy/dist) * speed;
                     }
                 } else {
-                    // Check highways
                     let trail = this.findNearest(pheromones, 30);
                     if (trail) {
-                        this.vx += (-trail.vx * 0.5); // Backtrack
-                        this.vy += (-trail.vy * 0.5);
+                        this.vx += (-trail.vx * 0.5); this.vy += (-trail.vy * 0.5);
                     } else {
-                        // Wander
-                        this.vx += (Math.random() - 0.5) * 0.2;
-                        this.vy += (Math.random() - 0.5) * 0.2;
+                        this.vx += (Math.random() - 0.5) * 0.2; this.vy += (Math.random() - 0.5) * 0.2;
                     }
                 }
             }
-
-            // Normalization & Bounds
             let mag = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
             if (mag > speed) { this.vx = (this.vx/mag)*speed; this.vy = (this.vy/mag)*speed; }
             this.x += this.vx; this.y += this.vy;
-
-            // Wall Bounce
             if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
             if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
             this.x = Math.max(0, Math.min(canvas.width, this.x));
             this.y = Math.max(0, Math.min(canvas.height, this.y));
         }
-
         draw() {
-            ctx.save();
-            ctx.translate(this.x, this.y);
-            let angle = Math.atan2(this.vy, this.vx);
-            ctx.rotate(angle);
-            
-            // Color Logic
+            ctx.save(); ctx.translate(this.x, this.y);
+            let angle = Math.atan2(this.vy, this.vx); ctx.rotate(angle);
             if (this.hasFood) ctx.fillStyle = '#4fc3f7';
-            else if (this.thirst < 30) ctx.fillStyle = '#ef5350'; // Red if very thirsty
-            else ctx.fillStyle = '#ffa726'; // Normal Orange
-
-            // Body
-            ctx.beginPath();
-            ctx.ellipse(0, 0, 4, 2, 0, 0, Math.PI*2);
-            ctx.fill();
-            // Head
-            ctx.beginPath();
-            ctx.arc(3, 0, 1.5, 0, Math.PI*2); 
-            ctx.fill();
-
-            if (this.hasFood) {
-                ctx.fillStyle = '#76ff03'; // Crumb
-                ctx.beginPath();
-                ctx.arc(4, 0, 2, 0, Math.PI*2); 
-                ctx.fill();
-            }
+            else if (this.thirst < 30) ctx.fillStyle = '#ef5350';
+            else ctx.fillStyle = '#ffa726';
+            ctx.beginPath(); ctx.ellipse(0, 0, 4, 2, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(3, 0, 1.5, 0, Math.PI*2); ctx.fill();
+            if (this.hasFood) { ctx.fillStyle = '#76ff03'; ctx.beginPath(); ctx.arc(4, 0, 2, 0, Math.PI*2); ctx.fill(); }
             ctx.restore();
         }
-
         findNearest(list, range) {
-            let close = null;
-            let minDist = range;
+            let close = null; let minDist = range;
             for(let item of list) {
                 let d = Math.sqrt((this.x - item.x)**2 + (this.y - item.y)**2);
                 if (d < minDist) {
-                    if(item instanceof Pheromone && d < 2) continue; // Don't get stuck
-                    minDist = d;
-                    close = item;
+                    if(item instanceof Pheromone && d < 2) continue; 
+                    minDist = d; close = item;
                 }
             }
             return close;
@@ -349,55 +373,42 @@
         if (selectedTool === 'ant') ants.push(new Ant(x, y));
         if (selectedTool === 'plant') plants.push(new Plant(x, y));
         if (selectedTool === 'water') puddles.push(new WaterPuddle(x, y));
+        if (selectedTool === 'worm') worms.push(new Worm(x, y));
     });
 
     // --- LOOP ---
     function loop() {
-        ctx.fillStyle = '#4e342e';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#4e342e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw Nest
-        ctx.fillStyle = '#3e2723';
-        ctx.beginPath();
-        ctx.arc(NEST_X, NEST_Y, NEST_SIZE, 0, Math.PI*2);
-        ctx.fill();
-        ctx.strokeStyle = '#5d4037';
-        ctx.lineWidth = 3;
-        ctx.stroke();
+        // Nest
+        ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(NEST_X, NEST_Y, NEST_SIZE, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 3; ctx.stroke();
 
-        // 1. Plants
         plants.forEach(p => { p.update(); p.draw(); });
-
-        // 2. Puddles (Filter out empty ones)
         for (let i = puddles.length - 1; i >= 0; i--) {
-            puddles[i].draw();
-            if (puddles[i].capacity <= 0) puddles.splice(i, 1);
+            puddles[i].draw(); if (puddles[i].capacity <= 0) puddles.splice(i, 1);
         }
-
-        // 3. Pheromones
         for (let i = pheromones.length - 1; i >= 0; i--) {
-            pheromones[i].update();
-            pheromones[i].draw();
-            if (pheromones[i].life <= 0) pheromones.splice(i, 1);
+            pheromones[i].update(); pheromones[i].draw(); if (pheromones[i].life <= 0) pheromones.splice(i, 1);
         }
-
-        // 4. Food
         foods.forEach(f => f.draw());
 
-        // 5. Ants
+        // WORMS UPDATE (Eat ants here)
+        worms.forEach(w => { w.update(); w.draw(); });
+
+        // ANTS UPDATE
         ants.forEach(a => { a.update(); a.draw(); });
 
-        // UI
         document.getElementById('s-ants').innerText = ants.length;
-        document.getElementById('s-stock').innerText = colonyFood;
+        document.getElementById('s-worms').innerText = worms.length;
 
         requestAnimationFrame(loop);
     }
 
     // Start
-    for(let i=0; i<12; i++) ants.push(new Ant(NEST_X, NEST_Y));
-    plants.push(new Plant(100, 100)); // Demo Plant
-    puddles.push(new WaterPuddle(700, 400)); // Demo Puddle
+    for(let i=0; i<15; i++) ants.push(new Ant(NEST_X, NEST_Y));
+    plants.push(new Plant(100, 100));
+    puddles.push(new WaterPuddle(700, 400));
 
     loop();
 </script>
