@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Colony vs Worms</title>
+    <title>Ant Colony: Clean & Long Worms</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -16,7 +16,7 @@
             padding: 10px;
         }
         canvas {
-            background-color: #4e342e; /* Dirt */
+            background-color: #4e342e;
             border: 4px solid #3e2723;
             border-radius: 4px;
             cursor: crosshair;
@@ -50,11 +50,9 @@
         .btn-water { background-color: #4fc3f7; }
         .btn-ant { background-color: #ffa726; }
         .btn-worm { background-color: #e91e63; color: white; border: 2px solid #880e4f; }
+        .btn-queen { background-color: #9c27b0; color: white; border: 2px solid #ea80fc; }
         
-        .active { 
-            border: 2px solid white; 
-            box-shadow: 0 0 10px rgba(255,255,255,0.5); 
-        }
+        .active { border: 2px solid white; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
         
         .stats { font-size: 14px; color: #ccc; font-family: monospace; border-right: 1px solid #555; padding-right: 15px;}
         .highlight { color: #ffa726; font-weight: bold; }
@@ -63,19 +61,21 @@
 </head>
 <body>
 
-    <h2>🐜 Colony vs Predators</h2>
+    <h2>🐜 Colony: Clean Visuals</h2>
     
     <canvas id="gameCanvas" width="800" height="500"></canvas>
     
     <div class="ui-panel">
         <div class="stats">
             Ants: <span id="s-ants" class="highlight">0</span><br>
-            Worms: <span id="s-worms" class="danger">0</span>
+            Worms: <span id="s-worms" class="danger">0</span><br>
+            Eggs: <span id="s-eggs" style="color:white">0</span>
         </div>
         <button id="btn-plant" class="btn-plant" onclick="setTool('plant')">Plant Garden</button>
         <button id="btn-water" class="btn-water" onclick="setTool('water')">Water Puddle</button>
-        <button id="btn-ant" class="btn-ant" onclick="setTool('ant')">Spawn Ant</button>
+        <button id="btn-ant" class="btn-ant" onclick="setTool('ant')">Spawn Worker</button>
         <button id="btn-worm" class="btn-worm" onclick="setTool('worm')">Spawn Worm 🐍</button>
+        <button id="btn-queen" class="btn-queen" onclick="spawnQueen()">Spawn Queen 👑</button>
     </div>
 
 <script>
@@ -85,7 +85,7 @@
     // --- CONFIGURATION ---
     const NEST_X = canvas.width / 2;
     const NEST_Y = canvas.height / 2;
-    const NEST_SIZE = 30;
+    const NEST_SIZE = 40;
 
     // --- GAME STATE ---
     let ants = [];
@@ -94,6 +94,8 @@
     let puddles = [];
     let plants = [];
     let pheromones = [];
+    let eggs = [];
+    let queen = null;
     let colonyFood = 0;
     
     let selectedTool = 'plant';
@@ -102,128 +104,115 @@
     function setTool(t) {
         selectedTool = t;
         document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-        document.querySelector(`.btn-${t}`).classList.add('active');
+        if(t !== 'queen') document.querySelector(`.btn-${t}`).classList.add('active');
+    }
+
+    function spawnQueen() {
+        if (queen) { alert("ULA violation detected. you have been reported for 'only one queen allowed'. "); return; }
+        queen = new Queen(NEST_X, NEST_Y);
     }
 
     // --- CLASSES ---
 
+    class Queen {
+        constructor(x, y) {
+            this.x = x; this.y = y; this.size = 8;
+            this.eggTimer = 0; this.eggRate = 180;
+        }
+        update() {
+            this.x += (Math.random() - 0.5) * 0.5;
+            this.y += (Math.random() - 0.5) * 0.5;
+            let dx = this.x - NEST_X; let dy = this.y - NEST_Y;
+            if (Math.sqrt(dx*dx + dy*dy) > 10) { this.x = NEST_X; this.y = NEST_Y; }
+
+            this.eggTimer++;
+            if (this.eggTimer > this.eggRate) {
+                eggs.push(new Egg(this.x + (Math.random()-0.5)*10, this.y + (Math.random()-0.5)*10));
+                this.eggTimer = 0;
+            }
+        }
+        draw() {
+            ctx.fillStyle = '#9c27b0'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#e040fb'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "white"; ctx.font = "10px Arial"; ctx.textAlign = "center"; ctx.fillText("👑", this.x, this.y - 12);
+        }
+    }
+
+    class Egg {
+        constructor(x, y) {
+            this.x = x; this.y = y; this.hatchTimer = 0; this.hatchTime = 300;
+        }
+        update() { this.hatchTimer++; }
+        draw() {
+            let progress = this.hatchTimer / this.hatchTime;
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + progress * 0.5})`;
+            ctx.beginPath(); ctx.ellipse(this.x, this.y, 3, 4, Math.PI/4, 0, Math.PI*2); ctx.fill();
+        }
+        isReady() { return this.hatchTimer >= this.hatchTime; }
+    }
+
     class Pheromone {
         constructor(x, y, vx, vy) {
-            this.x = x; this.y = y; this.vx = vx; this.vy = vy;
-            this.life = 1.0; 
+            this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.life = 1.0; 
         }
         update() { this.life -= 0.003; }
         draw() {
             ctx.fillStyle = `rgba(100, 200, 255, ${this.life * 0.4})`;
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(this.x, this.y, 2, 0, Math.PI * 2); ctx.fill();
         }
     }
 
     class Worm {
         constructor(x, y) {
-            this.x = x;
-            this.y = y;
-            this.vx = (Math.random() - 0.5);
-            this.vy = (Math.random() - 0.5);
-            this.size = 6;
-            this.speed = 0.85; // Slower than ants
+            this.x = x; this.y = y;
+            this.vx = (Math.random() - 0.5); this.vy = (Math.random() - 0.5);
+            this.size = 6; this.speed = 0.9;
             
-            // For the trail effect (Body segments)
+            // INCREASED LENGTH
             this.history = []; 
-            this.historyMax = 12; // Length of worm
+            this.historyMax = 30; // Was 12, now 30 for a long snake look
         }
-
         update() {
-            let target = null;
-            
-            // 1. HUNT: Look for nearest ant within range
-            let prey = this.findNearestAnt(120);
-            
+            let prey = this.findNearestAnt(130);
             if (prey) {
-                // Chase Prey
-                let dx = prey.x - this.x;
-                let dy = prey.y - this.y;
+                let dx = prey.x - this.x; let dy = prey.y - this.y;
                 let dist = Math.sqrt(dx*dx + dy*dy);
-                
-                // Eat if touching
                 if (dist < this.size + 2) {
-                    ants.splice(ants.indexOf(prey), 1); // Kill ant
+                    ants.splice(ants.indexOf(prey), 1); 
                 } else {
-                    // Move towards prey
-                    this.vx = (dx / dist) * this.speed;
-                    this.vy = (dy / dist) * this.speed;
+                    this.vx = (dx / dist) * this.speed; this.vy = (dy / dist) * this.speed;
                 }
             } else {
-                // Wander Randomly
-                if (Math.random() < 0.05) {
-                    this.vx += (Math.random() - 0.5) * 0.5;
-                    this.vy += (Math.random() - 0.5) * 0.5;
-                }
-                // Normalize wandering speed
-                let currentSpeed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
-                if (currentSpeed > this.speed) {
-                    this.vx = (this.vx / currentSpeed) * this.speed;
-                    this.vy = (this.vy / currentSpeed) * this.speed;
-                }
+                if (Math.random() < 0.05) { this.vx += (Math.random() - 0.5) * 0.5; this.vy += (Math.random() - 0.5) * 0.5; }
+                let s = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                if (s > this.speed) { this.vx = (this.vx/s)*this.speed; this.vy = (this.vy/s)*this.speed; }
             }
-
-            // Update Position
-            this.x += this.vx;
-            this.y += this.vy;
-
-            // Bounce off walls
+            this.x += this.vx; this.y += this.vy;
             if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
             if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
             this.x = Math.max(0, Math.min(canvas.width, this.x));
             this.y = Math.max(0, Math.min(canvas.height, this.y));
 
-            // Record History for Body Segments
             this.history.push({x: this.x, y: this.y});
-            if (this.history.length > this.historyMax) {
-                this.history.shift(); // Remove oldest segment
-            }
+            if (this.history.length > this.historyMax) this.history.shift();
         }
-
         draw() {
-            // Draw Body (History)
-            ctx.fillStyle = '#c2185b'; // Dark Pink
+            ctx.fillStyle = '#c2185b';
             for (let i = 0; i < this.history.length; i++) {
                 let pos = this.history[i];
-                // Segments get smaller towards the tail
                 let size = this.size * (i / this.history.length);
-                ctx.beginPath();
-                ctx.arc(pos.x, pos.y, size, 0, Math.PI*2);
-                ctx.fill();
+                ctx.beginPath(); ctx.arc(pos.x, pos.y, size, 0, Math.PI*2); ctx.fill();
             }
-
-            // Draw Head
-            ctx.fillStyle = '#e91e63'; // Bright Pink
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
-            ctx.fill();
-            
-            // Eyes
+            ctx.fillStyle = '#e91e63'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = 'white';
             ctx.beginPath(); ctx.arc(this.x - 2, this.y - 2, 2, 0, Math.PI*2); ctx.fill();
             ctx.beginPath(); ctx.arc(this.x + 2, this.y - 2, 2, 0, Math.PI*2); ctx.fill();
-            
-            // Pupils (Look in velocity direction slightly)
-            ctx.fillStyle = 'black';
-            ctx.beginPath(); ctx.arc(this.x - 2 + this.vx, this.y - 2 + this.vy, 1, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(this.x + 2 + this.vx, this.y - 2 + this.vy, 1, 0, Math.PI*2); ctx.fill();
         }
-
         findNearestAnt(range) {
-            let close = null;
-            let minDist = range;
+            let close = null; let minDist = range;
             for(let ant of ants) {
                 let d = Math.sqrt((this.x - ant.x)**2 + (this.y - ant.y)**2);
-                if (d < minDist) {
-                    minDist = d;
-                    close = ant;
-                }
+                if (d < minDist) { minDist = d; close = ant; }
             }
             return close;
         }
@@ -279,78 +268,131 @@
             this.scentTimer = 0;
             this.hunger = 80 + Math.random() * 20;
             this.thirst = 80 + Math.random() * 20;
+            this.maxAge = 4000 + Math.random() * 2000;
+            this.age = 0;
+            
+            // Removed HueOffset for consistent colors
+            
+            // Trail
+            this.trail = [];
+            this.trailLength = 20; 
+            this.trailFrameLimit = 0;
+            this.isPanicked = false;
         }
         update() {
+            this.age++;
             this.hunger -= 0.05; this.thirst -= 0.08;
-            let target = null;
+            this.isPanicked = false; 
+            
             let speed = 1.2;
 
-            if (this.hasFood) {
-                let dx = NEST_X - this.x; let dy = NEST_Y - this.y;
+            // 1. SURVIVAL CHECK
+            let predator = this.findNearest(worms, 70); 
+            if (predator) {
+                this.isPanicked = true;
+                let dx = this.x - predator.x;
+                let dy = this.y - predator.y;
                 let dist = Math.sqrt(dx*dx + dy*dy);
-                this.vx = (dx / dist) * speed; this.vy = (dy / dist) * speed;
-                if (dist < NEST_SIZE) {
-                    this.hasFood = false; colonyFood++; this.hunger += 30;
-                    this.vx *= -1; this.vy *= -1;
-                }
-                this.scentTimer++;
-                if (this.scentTimer > 10) { 
-                    pheromones.push(new Pheromone(this.x, this.y, this.vx, this.vy));
-                    this.scentTimer = 0;
-                }
-            } else if (this.thirst < 50 && puddles.length > 0) {
-                target = this.findNearest(puddles, 1000);
-                if (target) {
-                    let dx = target.x - this.x; let dy = target.y - this.y;
+                let panicSpeed = 2.0;
+                this.vx = (dx / dist) * panicSpeed;
+                this.vy = (dy / dist) * panicSpeed;
+                this.vx += (Math.random()-0.5) * 0.5;
+                this.vy += (Math.random()-0.5) * 0.5;
+            } 
+            // 2. STANDARD BEHAVIOR
+            else {
+                if (this.hasFood) {
+                    let dx = NEST_X - this.x; let dy = NEST_Y - this.y;
                     let dist = Math.sqrt(dx*dx + dy*dy);
-                    let puddleRadius = 5 + (target.capacity/10)*15;
-                    if (dist < puddleRadius + 5) {
-                        this.thirst = 100; target.capacity -= 1;
+                    this.vx = (dx / dist) * speed; this.vy = (dy / dist) * speed;
+                    if (dist < NEST_SIZE) {
+                        this.hasFood = false; colonyFood++; this.hunger += 30;
                         this.vx *= -1; this.vy *= -1;
-                    } else {
-                        this.vx = (dx/dist) * speed; this.vy = (dy/dist) * speed;
                     }
-                }
-            } else {
-                let visibleFood = this.findNearest(foods, 60);
-                if (visibleFood) {
-                    target = visibleFood;
-                    let dx = target.x - this.x; let dy = target.y - this.y;
-                    let dist = Math.sqrt(dx*dx + dy*dy);
-                    if (dist < 4) {
-                        this.hasFood = true; foods.splice(foods.indexOf(target), 1);
-                        this.hunger = 100; this.vx *= -1; this.vy *= -1;
-                    } else {
-                        this.vx = (dx/dist) * speed; this.vy = (dy/dist) * speed;
+                    this.scentTimer++;
+                    if (this.scentTimer > 10) { 
+                        pheromones.push(new Pheromone(this.x, this.y, this.vx, this.vy));
+                        this.scentTimer = 0;
+                    }
+                } else if (this.thirst < 50 && puddles.length > 0) {
+                    let target = this.findNearest(puddles, 1000);
+                    if (target) {
+                        let dx = target.x - this.x; let dy = target.y - this.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        let puddleRadius = 5 + (target.capacity/10)*15;
+                        if (dist < puddleRadius + 5) {
+                            this.thirst = 100; target.capacity -= 1;
+                            this.vx *= -1; this.vy *= -1;
+                        } else {
+                            this.vx = (dx/dist) * speed; this.vy = (dy/dist) * speed;
+                        }
                     }
                 } else {
-                    let trail = this.findNearest(pheromones, 30);
-                    if (trail) {
-                        this.vx += (-trail.vx * 0.5); this.vy += (-trail.vy * 0.5);
+                    let visibleFood = this.findNearest(foods, 60);
+                    if (visibleFood) {
+                        let target = visibleFood;
+                        let dx = target.x - this.x; let dy = target.y - this.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < 4) {
+                            this.hasFood = true; foods.splice(foods.indexOf(target), 1);
+                            this.hunger = 100; this.vx *= -1; this.vy *= -1;
+                        } else {
+                            this.vx = (dx/dist) * speed; this.vy = (dy/dist) * speed;
+                        }
                     } else {
-                        this.vx += (Math.random() - 0.5) * 0.2; this.vy += (Math.random() - 0.5) * 0.2;
+                        let trail = this.findNearest(pheromones, 30);
+                        if (trail) {
+                            this.vx += (-trail.vx * 0.5); this.vy += (-trail.vy * 0.5);
+                        } else {
+                            this.vx += (Math.random() - 0.5) * 0.2; this.vy += (Math.random() - 0.5) * 0.2;
+                        }
                     }
                 }
+                let mag = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                if (mag > speed) { this.vx = (this.vx/mag)*speed; this.vy = (this.vy/mag)*speed; }
             }
-            let mag = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
-            if (mag > speed) { this.vx = (this.vx/mag)*speed; this.vy = (this.vy/mag)*speed; }
+
             this.x += this.vx; this.y += this.vy;
             if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
             if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
             this.x = Math.max(0, Math.min(canvas.width, this.x));
             this.y = Math.max(0, Math.min(canvas.height, this.y));
+
+            this.trailFrameLimit++;
+            if(this.trailFrameLimit > 2) {
+                this.trail.push({x: this.x, y: this.y});
+                if (this.trail.length > this.trailLength) this.trail.shift();
+                this.trailFrameLimit = 0;
+            }
         }
         draw() {
+            // STANDARD COLORS ONLY (RGB)
+            let r = 255, g = 167, b = 38; // Default Orange
+            
+            if (this.hasFood) { r=79; g=195; b=247; } // Blue
+            else if (this.thirst < 30) { r=239; g=83; b=80; } // Reddish for thirst
+
+            // DRAW TRAIL
+            for (let i = 0; i < this.trail.length; i++) {
+                let pos = this.trail[i];
+                let opacity = (i / this.trail.length) * 0.6; 
+                let size = 2 + (i / this.trail.length) * 2;
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+                ctx.beginPath(); ctx.arc(pos.x, pos.y, size, 0, Math.PI*2); ctx.fill();
+            }
+
+            // DRAW ANT
             ctx.save(); ctx.translate(this.x, this.y);
             let angle = Math.atan2(this.vy, this.vx); ctx.rotate(angle);
-            if (this.hasFood) ctx.fillStyle = '#4fc3f7';
-            else if (this.thirst < 30) ctx.fillStyle = '#ef5350';
-            else ctx.fillStyle = '#ffa726';
+            
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            
             ctx.beginPath(); ctx.ellipse(0, 0, 4, 2, 0, 0, Math.PI*2); ctx.fill();
             ctx.beginPath(); ctx.arc(3, 0, 1.5, 0, Math.PI*2); ctx.fill();
             if (this.hasFood) { ctx.fillStyle = '#76ff03'; ctx.beginPath(); ctx.arc(4, 0, 2, 0, Math.PI*2); ctx.fill(); }
             ctx.restore();
         }
+        isDead() { return this.hunger <= 0 || this.thirst <= 0 || this.age > this.maxAge; }
         findNearest(list, range) {
             let close = null; let minDist = range;
             for(let item of list) {
@@ -380,7 +422,6 @@
     function loop() {
         ctx.fillStyle = '#4e342e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Nest
         ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(NEST_X, NEST_Y, NEST_SIZE, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 3; ctx.stroke();
 
@@ -393,22 +434,28 @@
         }
         foods.forEach(f => f.draw());
 
-        // WORMS UPDATE (Eat ants here)
-        worms.forEach(w => { w.update(); w.draw(); });
+        if (queen) { queen.update(); queen.draw(); }
+        for (let i = eggs.length - 1; i >= 0; i--) {
+            eggs[i].update(); eggs[i].draw();
+            if (eggs[i].isReady()) { ants.push(new Ant(eggs[i].x, eggs[i].y)); eggs.splice(i, 1); }
+        }
 
-        // ANTS UPDATE
-        ants.forEach(a => { a.update(); a.draw(); });
+        worms.forEach(w => { w.update(); w.draw(); });
+        for (let i = ants.length - 1; i >= 0; i--) {
+            let a = ants[i]; a.update(); a.draw();
+            if (a.isDead()) ants.splice(i, 1);
+        }
 
         document.getElementById('s-ants').innerText = ants.length;
         document.getElementById('s-worms').innerText = worms.length;
+        document.getElementById('s-eggs').innerText = eggs.length;
 
         requestAnimationFrame(loop);
     }
 
-    // Start
-    for(let i=0; i<15; i++) ants.push(new Ant(NEST_X, NEST_Y));
+    spawnQueen();
+    for(let i=0; i<5; i++) ants.push(new Ant(NEST_X, NEST_Y));
     plants.push(new Plant(100, 100));
-    puddles.push(new WaterPuddle(700, 400));
 
     loop();
 </script>
